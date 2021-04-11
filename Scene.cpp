@@ -35,8 +35,8 @@ void Scene::render(const std::string& outputFileName) {
         std::cout << i * width + j << "/" << width * height << std::endl;
       }
       double x = -(2 * (j + 0.5) / (double)width - 1) * tan(viewAngle / 2.) * width / (double)height;
-      double y = -(2 * (i + 0.5) / (double)height - 1) * tan(viewAngle / 2.);
-      vec3 direction = vec3(x, y, -1).normalize();
+      double z = -(2 * (i + 0.5) / (double)height - 1) * tan(viewAngle / 2.);
+      vec3 direction = vec3(x, -1, z).normalize();
 
       Ray ray(camera_->origin, direction);
 
@@ -117,7 +117,7 @@ void Scene::readGeometry(const std::string& fileName, const std::string& materia
         }
         std::istringstream iss(line);
         double x, y, z;
-        iss >> x >> y >> z;
+        iss >> x >> z >> y;
         vertices.push_back(vec3(x, y, z));
         break;
       }
