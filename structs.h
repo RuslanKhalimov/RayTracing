@@ -55,6 +55,10 @@ struct SpectralValues {
 
   SpectralValues(const std::unordered_map<int, double>& kd) : values(kd) {}
 
+  bool isZero() const {
+    return values.at(400) == 0 && values.at(500) == 0 && values.at(600) == 0 && values.at(700) == 0;
+  }
+
   SpectralValues operator*(double x) const {
     SpectralValues res(x);
     res *= *this;
@@ -152,6 +156,31 @@ struct Light {
 
   Light(const vec3 origin, const double& intensity, const SpectralValues& kd)
     : origin(origin), intensity(intensity), kd(kd) {
+  }
+
+  SpectralValues calculateLuminance(const vec3& hitPoint,
+                                    const vec3& N,
+                                    const std::vector<Triangle>& triangles,
+                                    int hitTriangleId) const {
+    vec3 lightDirection = (origin - hitPoint).normalize();
+    double dist = (origin - hitPoint).length();
+    double cosTheta = lightDirection.dot(N);
+    if (cosTheta <= 0) { // back side
+      return SpectralValues(0);
+    }
+
+    Ray shadowRay(hitPoint, lightDirection);
+    for (int id = 0; id < triangles.size(); ++id) {
+      if (id == hitTriangleId) {
+        continue;
+      }
+      if (triangles[id].hitTest(shadowRay, dist)) { // shadow
+        return SpectralValues(0);
+      }
+    }
+
+    double E = (intensity / (dist * dist)) * cosTheta;
+    return triangles[hitTriangleId].color * kd * E / M_PI;
   }
 };
 

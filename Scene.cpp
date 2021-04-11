@@ -55,18 +55,13 @@ void Scene::render(const std::string& outputFileName) {
       intersects++;
 
       vec3 hitPoint = ray.origin + ray.direction * t;
+      vec3 N = triangles_[triangleId].getNormal(ray.origin - hitPoint);
       for (const Light& light : lights_) {
-        vec3 lightDirection = (light.origin - hitPoint).normalize();
-        double dist = (light.origin - hitPoint).length();
-        double cosTheta = lightDirection.dot(triangles_[triangleId].getNormal(ray.origin - hitPoint));
-        if (cosTheta <= 0) {
-          continue;
-        }
+        ray.luminance += light.calculateLuminance(hitPoint, N, triangles_, triangleId);
+      }
 
-        // TODO shadow ray
+      if (!ray.luminance.isZero()) {
         radValues++;
-        double E = (light.intensity / (dist * dist)) * cosTheta;
-        ray.luminance += triangles_[triangleId].color * light.kd * E / M_PI;
       }
 
       renderedRays[i * width + j] = ray;
