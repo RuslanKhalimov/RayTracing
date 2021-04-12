@@ -188,8 +188,17 @@ struct Camera {
   vec3 origin;
   vec3 direction;
   int width, height;
+  double viewAngle = M_PI / 3;
 
   Camera(const vec3& origin, const vec3& target, int width, int height) : origin(origin), width(width), height(height) {
     direction = (target - origin).normalize();
+  }
+
+  Ray castRay(int i, int j) const  {
+    double x = -(2 * (j + 0.5) / (double)width - 1) * tan(viewAngle / 2.) * width / (double)height;
+    double z = -(2 * (i + 0.5) / (double)height - 1) * tan(viewAngle / 2.);
+    vec3 dir = vec3(x, -1, z).normalize();
+
+    return Ray(origin, dir);
   }
 };

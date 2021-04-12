@@ -23,7 +23,6 @@ void Scene::readSceneFromFiles(const std::string& geometryFile,
 void Scene::render(const std::string& outputFileName) {
   int width = camera_->width;
   int height = camera_->height;
-  double viewAngle = M_PI / 3;
   std::vector<Ray> renderedRays(width * height);
 
   int intersects = 0;
@@ -34,11 +33,7 @@ void Scene::render(const std::string& outputFileName) {
       if ((i * width + j) % 10000 == 0) {
         std::cout << i * width + j << "/" << width * height << std::endl;
       }
-      double x = -(2 * (j + 0.5) / (double)width - 1) * tan(viewAngle / 2.) * width / (double)height;
-      double z = -(2 * (i + 0.5) / (double)height - 1) * tan(viewAngle / 2.);
-      vec3 direction = vec3(x, -1, z).normalize();
-
-      Ray ray(camera_->origin, direction);
+      Ray ray = camera_->castRay(i, j);
 
       double t = std::numeric_limits<double>::max();
       int triangleId = -1;
