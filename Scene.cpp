@@ -23,16 +23,14 @@ void Scene::readSceneFromFiles(const std::string& geometryFile,
 void Scene::render(const std::string& outputFileName) {
   int width = camera_->width;
   int height = camera_->height;
-  std::vector<Ray> renderedRays(width * height);
+  std::vector<std::vector<std::pair<vec3, int>>> hitPoints(height, std::vector<std::pair<vec3, int>>(width));
 
   int intersects = 0;
   int radValues = 0;
 
+#pragma omp parallel for shared(height, width, hitPoints) default(none)
   for (int i = 0; i < height; ++i) {
     for (int j = 0; j < width; ++j) {
-      if ((i * width + j) % 10000 == 0) {
-        std::cout << i * width + j << "/" << width * height << std::endl;
-      }
       Ray ray = camera_->castRay(i, j);
 
       double t = std::numeric_limits<double>::max();
@@ -42,24 +40,30 @@ void Scene::render(const std::string& outputFileName) {
           triangleId = id;
         }
       }
+      hitPoints[i][j] = {ray.origin + ray.direction * t, triangleId};
+    }
+  }
+  std::vector<std::vector<SpectralValues>> outLuminance(height, std::vector<SpectralValues>(width, SpectralValues(0)));
 
+#pragma omp parallel for shared(height, width, hitPoints, outLuminance, intersects, radValues) default(none)
+  for (int i = 0; i < height; ++i) {
+    for (int j = 0; j < width; ++j) {
+      vec3 hitPoint = hitPoints[i][j].first;
+      int triangleId = hitPoints[i][j].second;
       if (triangleId == -1) {
         continue;
       }
 
       intersects++;
 
-      vec3 hitPoint = ray.origin + ray.direction * t;
-      vec3 N = triangles_[triangleId].getNormal(ray.origin - hitPoint);
+      vec3 N = triangles_[triangleId].getNormal(camera_->origin - hitPoint);
       for (const std::unique_ptr<Light>& light : lights_) {
-        ray.luminance += light->calculateLuminance(hitPoint, N, triangles_, triangleId);
+        outLuminance[i][j] += light->calculateLuminance(hitPoint, N, triangles_, triangleId);
       }
 
-      if (!ray.luminance.isZero()) {
+      if (!outLuminance[i][j].isZero()) {
         radValues++;
       }
-
-      renderedRays[i * width + j] = ray;
     }
   }
 
@@ -72,7 +76,7 @@ void Scene::render(const std::string& outputFileName) {
     out << "wave_length " << waveLength << std::endl;
     for (int i = 0; i < height; ++i) {
       for (int j = 0; j < width; ++j) {
-        out << renderedRays[i * width + j].luminance.values[waveLength] << " ";
+        out << outLuminance[i][j].values[waveLength] << " ";
       }
       out << std::endl;
     }
