@@ -149,41 +149,6 @@ struct Triangle {
   }
 };
 
-struct Light {
-  vec3 origin;
-  double intensity;
-  SpectralValues kd;
-
-  Light(const vec3 origin, const double& intensity, const SpectralValues& kd)
-    : origin(origin), intensity(intensity), kd(kd) {
-  }
-
-  SpectralValues calculateLuminance(const vec3& hitPoint,
-                                    const vec3& N,
-                                    const std::vector<Triangle>& triangles,
-                                    int hitTriangleId) const {
-    vec3 lightDirection = (origin - hitPoint).normalize();
-    double dist = (origin - hitPoint).length();
-    double cosTheta = lightDirection.dot(N);
-    if (cosTheta <= 0) { // back side
-      return SpectralValues(0);
-    }
-
-    Ray shadowRay(hitPoint, lightDirection);
-    for (int id = 0; id < triangles.size(); ++id) {
-      if (id == hitTriangleId) {
-        continue;
-      }
-      if (triangles[id].hitTest(shadowRay, dist)) { // shadow
-        return SpectralValues(0);
-      }
-    }
-
-    double E = (intensity / (dist * dist)) * cosTheta;
-    return triangles[hitTriangleId].color * kd * E / M_PI;
-  }
-};
-
 struct Camera {
   vec3 origin;
   vec3 direction;

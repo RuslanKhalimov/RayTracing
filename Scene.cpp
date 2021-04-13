@@ -51,8 +51,8 @@ void Scene::render(const std::string& outputFileName) {
 
       vec3 hitPoint = ray.origin + ray.direction * t;
       vec3 N = triangles_[triangleId].getNormal(ray.origin - hitPoint);
-      for (const Light& light : lights_) {
-        ray.luminance += light.calculateLuminance(hitPoint, N, triangles_, triangleId);
+      for (const std::unique_ptr<Light>& light : lights_) {
+        ray.luminance += light->calculateLuminance(hitPoint, N, triangles_, triangleId);
       }
 
       if (!ray.luminance.isZero()) {
@@ -176,7 +176,7 @@ void Scene::readLights(const std::string& fileName) {
     iss >> waveLength >> kd;
     kds[waveLength] = kd;
   }
-  lights_.push_back(Light(origin, intensity, kds));
+  lights_.push_back(std::make_unique<RectangleLight>(origin, intensity, kds, 130, 105));
   in.close();
 }
 

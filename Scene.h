@@ -4,6 +4,7 @@
 #include <memory>
 #include <string>
 #include "structs.h"
+#include "Light.h"
 
 class Scene {
 public:
@@ -20,6 +21,6 @@ private:
   void readCamera(const std::string& fileName);
 
   std::vector<Triangle> triangles_;
-  std::vector<Light> lights_;
+  std::vector<std::unique_ptr<Light>> lights_;
   std::unique_ptr<Camera> camera_ = nullptr;
 };
