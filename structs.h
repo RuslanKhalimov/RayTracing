@@ -56,10 +56,6 @@ struct SpectralValues {
 
   SpectralValues(const std::unordered_map<int, double>& kd) : values(kd) {}
 
-  bool isZero() const {
-    return values.at(400) == 0 && values.at(500) == 0 && values.at(600) == 0 && values.at(700) == 0;
-  }
-
   SpectralValues operator*(double x) const {
     SpectralValues res(x);
     res *= *this;

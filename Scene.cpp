@@ -25,9 +25,6 @@ void Scene::render(const std::string& outputFileName) {
   int height = camera_->height;
   std::vector<std::vector<std::pair<vec3, int>>> hitPoints(height, std::vector<std::pair<vec3, int>>(width));
 
-  int intersects = 0;
-  int radValues = 0;
-
 #pragma omp parallel for shared(height, width, hitPoints) default(none)
   for (int i = 0; i < height; ++i) {
     for (int j = 0; j < width; ++j) {
@@ -83,7 +80,7 @@ void Scene::render(const std::string& outputFileName) {
   }
 
   std::vector<std::vector<SpectralValues>> outLuminance(height, std::vector<SpectralValues>(width, SpectralValues(0)));
-#pragma omp parallel for shared(height, width, scaledHitPoints, outLuminance, intersects, radValues) default(none)
+#pragma omp parallel for shared(height, width, scaledHitPoints, outLuminance) default(none)
   for (int i = 0; i < height; ++i) {
     for (int j = 0; j < width; ++j) {
       for (const std::pair<vec3, int>& nextHitPoint : scaledHitPoints[i][j]) {
@@ -93,23 +90,14 @@ void Scene::render(const std::string& outputFileName) {
           continue;
         }
 
-        intersects++;
-
         vec3 N = triangles_[triangleId].getNormal(camera_->origin - hitPoint);
         for (const std::unique_ptr<Light>& light : lights_) {
           outLuminance[i][j] += light->calculateLuminance(hitPoint, N, triangles_, triangleId);
         }
       }
       outLuminance[i][j] = outLuminance[i][j] / scaledHitPoints[i][j].size();
-
-      if (!outLuminance[i][j].isZero()) {
-        radValues++;
-      }
     }
   }
-
-  std::cout << intersects << " intersects" << std::endl;
-  std::cout << radValues << " radValues" << std::endl;
 
   std::ofstream out(outputFileName);
 
