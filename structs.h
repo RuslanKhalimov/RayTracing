@@ -2,6 +2,7 @@
 
 #include <unordered_map>
 #include <cmath>
+#include <cassert>
 
 struct vec3 {
   double x, y, z;
@@ -150,18 +151,25 @@ struct Triangle {
 };
 
 struct Camera {
-  vec3 origin;
-  vec3 direction;
-  int width, height;
-  double viewAngle = M_PI / 3;
+  const vec3 origin;
+  const vec3 direction;
+  const int width, height;
+  const double viewAngle = M_PI / 3;
 
-  Camera(const vec3& origin, const vec3& target, int width, int height) : origin(origin), width(width), height(height) {
-    direction = (target - origin).normalize();
-  }
+  Camera(const vec3& origin, const vec3& target, int width, int height)
+      : origin(origin), width(width), height(height), direction((target - origin).normalize()) {}
 
-  Ray castRay(int i, int j) const  {
-    double x = -(2 * (j + 0.5) / (double)width - 1) * tan(viewAngle / 2.) * width / (double)height;
-    double z = -(2 * (i + 0.5) / (double)height - 1) * tan(viewAngle / 2.);
+  Ray castRay(int i, int j, int resolutionScaler = 1, int iOffset = 0, int jOffset = 0) const {
+    assert(iOffset < resolutionScaler);
+    assert(jOffset < resolutionScaler);
+
+    double scaledWidth = width * resolutionScaler;
+    double scaledHeight = height * resolutionScaler;
+    int iScaled = (i - 1) * resolutionScaler + iOffset;
+    int jScaled = (j - 1) * resolutionScaler + jOffset;
+
+    double x = -(2 * (jScaled + 0.5) / (double)scaledWidth - 1) * tan(viewAngle / 2.) * scaledWidth / (double)scaledHeight;
+    double z = -(2 * (iScaled + 0.5) / (double)scaledHeight - 1) * tan(viewAngle / 2.);
     vec3 dir = vec3(x, -1, z).normalize();
 
     return Ray(origin, dir);

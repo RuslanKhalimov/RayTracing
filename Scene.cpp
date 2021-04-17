@@ -43,23 +43,64 @@ void Scene::render(const std::string& outputFileName) {
       hitPoints[i][j] = {ray.origin + ray.direction * t, triangleId};
     }
   }
-  std::vector<std::vector<SpectralValues>> outLuminance(height, std::vector<SpectralValues>(width, SpectralValues(0)));
 
-#pragma omp parallel for shared(height, width, hitPoints, outLuminance, intersects, radValues) default(none)
+  // for antialiasing cast more rays on triangle edges pixel
+  std::vector<std::vector<std::vector<std::pair<vec3, int>>>> scaledHitPoints(height, std::vector<std::vector<std::pair<vec3, int>>>(width));
+#pragma omp parallel for shared(height, width, hitPoints, scaledHitPoints) default(none)
+  for (int i = 0; i < std::max(width, height); ++i) {
+    if (i < width) {
+      scaledHitPoints[0][i].push_back(hitPoints[0][i]);
+    }
+    if (i < height) {
+      scaledHitPoints[i][0].push_back(hitPoints[i][0]);
+    }
+  }
+  static const int ANTIALIASING_FACTOR = 5;
+#pragma omp parallel for shared(height, width, hitPoints, scaledHitPoints) default(none)
+  for (int i = 1; i < height; ++i) {
+    for (int j = 1; j < width; ++j) {
+      if (hitPoints[i][j].second != hitPoints[i - 1][j].second ||
+          hitPoints[i][j].second != hitPoints[i][j - 1].second) { // edge
+        for (int iOffset = 0; iOffset < ANTIALIASING_FACTOR; ++iOffset) {
+          for (int jOffset = 0; jOffset < ANTIALIASING_FACTOR; ++jOffset) {
+            Ray ray = camera_->castRay(i, j, ANTIALIASING_FACTOR, iOffset, jOffset);
+
+            double t = std::numeric_limits<double>::max();
+            int triangleId = -1;
+            for (int id = 0; id < triangles_.size(); ++id) { // TODO check only relevant triangles
+              if (triangles_[id].hitTest(ray, t)) {
+                triangleId = id;
+              }
+            }
+
+            scaledHitPoints[i][j].push_back({ray.origin + ray.direction * t, triangleId});
+          }
+        }
+      } else {
+        scaledHitPoints[i][j].push_back(hitPoints[i][j]);
+      }
+    }
+  }
+
+  std::vector<std::vector<SpectralValues>> outLuminance(height, std::vector<SpectralValues>(width, SpectralValues(0)));
+#pragma omp parallel for shared(height, width, scaledHitPoints, outLuminance, intersects, radValues) default(none)
   for (int i = 0; i < height; ++i) {
     for (int j = 0; j < width; ++j) {
-      vec3 hitPoint = hitPoints[i][j].first;
-      int triangleId = hitPoints[i][j].second;
-      if (triangleId == -1) {
-        continue;
-      }
+      for (const std::pair<vec3, int>& nextHitPoint : scaledHitPoints[i][j]) {
+        vec3 hitPoint = nextHitPoint.first;
+        int triangleId = nextHitPoint.second;
+        if (triangleId == -1) {
+          continue;
+        }
 
-      intersects++;
+        intersects++;
 
-      vec3 N = triangles_[triangleId].getNormal(camera_->origin - hitPoint);
-      for (const std::unique_ptr<Light>& light : lights_) {
-        outLuminance[i][j] += light->calculateLuminance(hitPoint, N, triangles_, triangleId);
+        vec3 N = triangles_[triangleId].getNormal(camera_->origin - hitPoint);
+        for (const std::unique_ptr<Light>& light : lights_) {
+          outLuminance[i][j] += light->calculateLuminance(hitPoint, N, triangles_, triangleId);
+        }
       }
+      outLuminance[i][j] = outLuminance[i][j] / scaledHitPoints[i][j].size();
 
       if (!outLuminance[i][j].isZero()) {
         radValues++;
@@ -180,7 +221,7 @@ void Scene::readLights(const std::string& fileName) {
     iss >> waveLength >> kd;
     kds[waveLength] = kd;
   }
-  lights_.push_back(std::make_unique<RectangleLight>(origin, intensity, kds, 130, 105));
+  lights_.push_back(std::make_unique<PointLight>(origin, intensity, kds));
   in.close();
 }
 
