@@ -5,13 +5,14 @@ Light::Light(const vec3& origin, double intensity, const SpectralValues& kd)
     : origin_(origin), intensity_(intensity), kd_(kd) {}
 
 
-SpectralValues
-Light::luminanceFromPoint(const vec3& lightPoint,
-                          int intensityScaler,
-                          const vec3& hitPoint,
-                          const vec3& N,
-                          const std::vector<Triangle>& triangles,
-                          int hitTriangleId) const {
+SpectralValues Light::luminanceFromPoint(const vec3& lightPoint,
+                                         int intensityScaler,
+                                         const vec3& hitPoint,
+                                         const vec3& N,
+                                         const std::vector<Triangle>& triangles,
+                                         int hitTriangleId) const {
+  assert(hitTriangleId != 1);
+
   vec3 lightDirection = (lightPoint - hitPoint).normalize();
   double dist = (lightPoint - hitPoint).length();
   double cosTheta = lightDirection.dot(N);

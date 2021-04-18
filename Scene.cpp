@@ -10,6 +10,12 @@ enum GeometryParseState {
   TRIANGLES
 };
 
+struct HitPoint {
+  vec3 point;
+  int triangleId;
+  bool isShadow;
+};
+
 void Scene::readSceneFromFiles(const std::string& geometryFile,
                                const std::string& materialsFile,
                                const std::string& lightsFile,
@@ -23,7 +29,7 @@ void Scene::readSceneFromFiles(const std::string& geometryFile,
 void Scene::render(const std::string& outputFileName) {
   int width = camera_->width;
   int height = camera_->height;
-  std::vector<std::vector<std::pair<vec3, int>>> hitPoints(height, std::vector<std::pair<vec3, int>>(width));
+  std::vector<std::vector<HitPoint>> hitPoints(height, std::vector<HitPoint>(width));
 
 #pragma omp parallel for shared(height, width, hitPoints) default(none)
   for (int i = 0; i < height; ++i) {
@@ -37,27 +43,48 @@ void Scene::render(const std::string& outputFileName) {
           triangleId = id;
         }
       }
-      hitPoints[i][j] = {ray.origin + ray.direction * t, triangleId};
+
+      vec3 hitPoint = ray.origin + ray.direction * t;
+      bool isShadow = false;
+      if (triangleId != -1) {
+        isShadow = true;
+        vec3 N = triangles_[triangleId].getNormal(camera_->origin - hitPoint);
+        for (const auto& light : lights_) {
+          if (!light->calculateLuminance(hitPoint, N, triangles_, triangleId).isZero()) {
+            isShadow = false;
+            break;
+          }
+        }
+      }
+
+      hitPoints[i][j] = {hitPoint, triangleId, isShadow};
     }
   }
 
-  // for antialiasing cast more rays on triangle edges pixel
-  std::vector<std::vector<std::vector<std::pair<vec3, int>>>> scaledHitPoints(height, std::vector<std::vector<std::pair<vec3, int>>>(width));
+  // for antialiasing cast more rays on triangle and shadow edges pixel
+  std::vector<std::vector<std::vector<HitPoint>>> scaledHitPoints(height, std::vector<std::vector<HitPoint>>(width));
 #pragma omp parallel for shared(height, width, hitPoints, scaledHitPoints) default(none)
   for (int i = 0; i < std::max(width, height); ++i) {
     if (i < width) {
       scaledHitPoints[0][i].push_back(hitPoints[0][i]);
+      scaledHitPoints[height - 1][i].push_back(hitPoints[height - 1][i]);
     }
     if (i < height) {
       scaledHitPoints[i][0].push_back(hitPoints[i][0]);
+      scaledHitPoints[i][width - 1].push_back(hitPoints[i][width - 1]);
     }
   }
-  static const int ANTIALIASING_FACTOR = 5;
 #pragma omp parallel for shared(height, width, hitPoints, scaledHitPoints) default(none)
-  for (int i = 1; i < height; ++i) {
-    for (int j = 1; j < width; ++j) {
-      if (hitPoints[i][j].second != hitPoints[i - 1][j].second ||
-          hitPoints[i][j].second != hitPoints[i][j - 1].second) { // edge
+  for (int i = 1; i < height - 1; ++i) {
+    for (int j = 1; j < width - 1; ++j) {
+      if (hitPoints[i][j].triangleId != hitPoints[i - 1][j].triangleId ||
+          hitPoints[i][j].isShadow != hitPoints[i - 1][j].isShadow ||
+          hitPoints[i][j].triangleId != hitPoints[i][j - 1].triangleId ||
+          hitPoints[i][j].isShadow != hitPoints[i][j - 1].isShadow ||
+          hitPoints[i][j].triangleId != hitPoints[i + 1][j].triangleId ||
+          hitPoints[i][j].isShadow != hitPoints[i + 1][j].isShadow ||
+          hitPoints[i][j].triangleId != hitPoints[i][j + 1].triangleId ||
+          hitPoints[i][j].isShadow != hitPoints[i][j + 1].isShadow) {
         for (int iOffset = 0; iOffset < ANTIALIASING_FACTOR; ++iOffset) {
           for (int jOffset = 0; jOffset < ANTIALIASING_FACTOR; ++jOffset) {
             Ray ray = camera_->castRay(i, j, ANTIALIASING_FACTOR, iOffset, jOffset);
@@ -70,7 +97,8 @@ void Scene::render(const std::string& outputFileName) {
               }
             }
 
-            scaledHitPoints[i][j].push_back({ray.origin + ray.direction * t, triangleId});
+            // `isShadow` is not used, so don't calculate it
+            scaledHitPoints[i][j].push_back({ray.origin + ray.direction * t, triangleId, false});
           }
         }
       } else {
@@ -83,9 +111,9 @@ void Scene::render(const std::string& outputFileName) {
 #pragma omp parallel for shared(height, width, scaledHitPoints, outLuminance) default(none)
   for (int i = 0; i < height; ++i) {
     for (int j = 0; j < width; ++j) {
-      for (const std::pair<vec3, int>& nextHitPoint : scaledHitPoints[i][j]) {
-        vec3 hitPoint = nextHitPoint.first;
-        int triangleId = nextHitPoint.second;
+      for (const HitPoint& nextHitPoint : scaledHitPoints[i][j]) {
+        vec3 hitPoint = nextHitPoint.point;
+        int triangleId = nextHitPoint.triangleId;
         if (triangleId == -1) {
           continue;
         }
