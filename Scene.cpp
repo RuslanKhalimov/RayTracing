@@ -114,7 +114,7 @@ void Scene::render(const std::string& outputFileName) {
 
           N = triangles_[reflectionHitPoint.triangleId].getNormal(-reflectRay.direction);
           for (const std::unique_ptr<Light>& light : lights_) {
-            outLuminance[i][j] += light->calculateLuminance(reflectionHitPoint.point, N, triangles_, reflectionHitPoint.triangleId);
+            outLuminance[i][j] += light->calculateLuminance(reflectionHitPoint.point, N, triangles_, reflectionHitPoint.triangleId) * reflectRay.ks;
           }
 
           viewVec = -reflectDir;
