@@ -65,6 +65,15 @@ struct SpectralValues {
     return values.at(400) == 0 && values.at(500) == 0 && values.at(600) == 0 && values.at(700) == 0;
   }
 
+  double compare(const SpectralValues& other) const {
+    double result = 0;
+    result += (values.at(400) - other.values.at(400)) * (values.at(400) - other.values.at(400));
+    result += (values.at(500) - other.values.at(500)) * (values.at(500) - other.values.at(500));
+    result += (values.at(600) - other.values.at(600)) * (values.at(600) - other.values.at(600));
+    result += (values.at(700) - other.values.at(700)) * (values.at(700) - other.values.at(700));
+    return sqrt(result);
+  }
+
   SpectralValues operator*(double x) const {
     SpectralValues res(x);
     res *= *this;

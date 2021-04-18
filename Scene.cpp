@@ -23,107 +23,31 @@ void Scene::readSceneFromFiles(const std::string& geometryFile,
 void Scene::render(const std::string& outputFileName) {
   int width = camera_->width;
   int height = camera_->height;
-  std::vector<std::vector<HitPoint>> hitPoints(height, std::vector<HitPoint>(width));
+  std::vector<std::vector<SpectralValues>> outLuminance(height, std::vector<SpectralValues>(width, SpectralValues(0)));
 
-#pragma omp parallel for shared(height, width, hitPoints) default(none)
+#pragma omp parallel for shared(height, width, outLuminance) default(none)
   for (int i = 0; i < height; ++i) {
     for (int j = 0; j < width; ++j) {
       Ray ray = camera_->castRay(i, j);
-
-      HitPoint hitPoint = getIntersection(ray);
-
-      if (hitPoint.triangleId != -1) {
-        hitPoint.isShadow = true;
-        vec3 N = triangles_[hitPoint.triangleId].getNormal(camera_->origin - hitPoint.point);
-        for (const auto& light : lights_) {
-          if (!light->calculateLuminance(hitPoint.point, N, triangles_, hitPoint.triangleId).isZero()) {
-            hitPoint.isShadow = false;
-            break;
-          }
-        }
-      }
-
-      hitPoints[i][j] = hitPoint;
+      outLuminance[i][j] = getLuminance(ray);
     }
   }
 
-  // for antialiasing cast more rays on triangle and shadow edges pixel
-  std::vector<std::vector<std::vector<HitPoint>>> scaledHitPoints(height, std::vector<std::vector<HitPoint>>(width));
-#pragma omp parallel for shared(height, width, hitPoints, scaledHitPoints) default(none)
-  for (int i = 0; i < std::max(width, height); ++i) {
-    if (i < width) {
-      scaledHitPoints[0][i].push_back(hitPoints[0][i]);
-      scaledHitPoints[height - 1][i].push_back(hitPoints[height - 1][i]);
-    }
-    if (i < height) {
-      scaledHitPoints[i][0].push_back(hitPoints[i][0]);
-      scaledHitPoints[i][width - 1].push_back(hitPoints[i][width - 1]);
-    }
-  }
-#pragma omp parallel for shared(height, width, hitPoints, scaledHitPoints) default(none)
+#pragma omp parallel for shared(height, width, outLuminance) default(none)
   for (int i = 1; i < height - 1; ++i) {
     for (int j = 1; j < width - 1; ++j) {
-      if (hitPoints[i][j].triangleId != hitPoints[i - 1][j].triangleId ||
-          hitPoints[i][j].isShadow != hitPoints[i - 1][j].isShadow ||
-          hitPoints[i][j].triangleId != hitPoints[i][j - 1].triangleId ||
-          hitPoints[i][j].isShadow != hitPoints[i][j - 1].isShadow ||
-          hitPoints[i][j].triangleId != hitPoints[i + 1][j].triangleId ||
-          hitPoints[i][j].isShadow != hitPoints[i + 1][j].isShadow ||
-          hitPoints[i][j].triangleId != hitPoints[i][j + 1].triangleId ||
-          hitPoints[i][j].isShadow != hitPoints[i][j + 1].isShadow) {
+      if (outLuminance[i][j].compare(outLuminance[i - 1][j]) > 1 ||
+          outLuminance[i][j].compare(outLuminance[i][j - 1]) > 1 ||
+          outLuminance[i][j].compare(outLuminance[i + 1][j]) > 1 ||
+          outLuminance[i][j].compare(outLuminance[i][j + 1]) > 1) {
         for (int iOffset = 0; iOffset < ANTIALIASING_FACTOR; ++iOffset) {
           for (int jOffset = 0; jOffset < ANTIALIASING_FACTOR; ++jOffset) {
             Ray ray = camera_->castRay(i, j, ANTIALIASING_FACTOR, iOffset, jOffset);
-            // `isShadow` is not used, so don't calculate it
-            scaledHitPoints[i][j].push_back(getIntersection(ray));
+            outLuminance[i][j] += getLuminance(ray);
           }
         }
-      } else {
-        scaledHitPoints[i][j].push_back(hitPoints[i][j]);
+        outLuminance[i][j] = outLuminance[i][j] / (ANTIALIASING_FACTOR * ANTIALIASING_FACTOR);
       }
-    }
-  }
-
-  std::vector<std::vector<SpectralValues>> outLuminance(height, std::vector<SpectralValues>(width, SpectralValues(0)));
-#pragma omp parallel for shared(height, width, scaledHitPoints, outLuminance) default(none)
-  for (int i = 0; i < height; ++i) {
-    for (int j = 0; j < width; ++j) {
-      for (const HitPoint& nextHitPoint : scaledHitPoints[i][j]) {
-        vec3 hitPoint = nextHitPoint.point;
-        int triangleId = nextHitPoint.triangleId;
-        if (triangleId == -1) {
-          continue;
-        }
-
-        vec3 viewVec = camera_->origin - hitPoint;
-        vec3 N = triangles_[triangleId].getNormal(viewVec);
-        vec3 reflectDir = N * 2 * viewVec.dot(N) - viewVec;
-
-        // diffuse
-        for (const std::unique_ptr<Light>& light : lights_) {
-          outLuminance[i][j] += light->calculateLuminance(hitPoint, N, triangles_, triangleId);
-        }
-
-        // reflection
-        Ray reflectRay(hitPoint, reflectDir, triangles_[triangleId].material->ks);
-        for (int iter = 0; iter < 5 && reflectRay.ks > 0.01; ++iter) { // no more than 3 reflections
-          HitPoint reflectionHitPoint = getIntersection(reflectRay);
-          if (reflectionHitPoint.triangleId == -1) {
-            break;
-          }
-
-          N = triangles_[reflectionHitPoint.triangleId].getNormal(-reflectRay.direction);
-          for (const std::unique_ptr<Light>& light : lights_) {
-            outLuminance[i][j] += light->calculateLuminance(reflectionHitPoint.point, N, triangles_, reflectionHitPoint.triangleId) * reflectRay.ks;
-          }
-
-          viewVec = -reflectDir;
-          reflectDir = N * 2 * viewVec.dot(N) - viewVec;
-          double ks = reflectRay.ks * triangles_[reflectionHitPoint.triangleId].material->ks;
-          reflectRay = Ray(reflectionHitPoint.point, reflectDir, ks);
-        }
-      }
-      outLuminance[i][j] = outLuminance[i][j] / scaledHitPoints[i][j].size();
     }
   }
 
@@ -154,7 +78,49 @@ Scene::HitPoint Scene::getIntersection(const Ray& ray) {
   }
   vec3 hitPoint = triangleId == -1 ? vec3(0, 0, 0) : ray.origin + ray.direction * t;
 
-  return {hitPoint, triangleId, false};
+  return {hitPoint, triangleId};
+}
+
+
+SpectralValues Scene::getLuminance(const Ray& ray) {
+  SpectralValues luminance(0);
+
+  HitPoint nextHitPoint = getIntersection(ray);
+
+  vec3 hitPoint = nextHitPoint.point;
+  int triangleId = nextHitPoint.triangleId;
+  if (triangleId == -1) {
+    return luminance;
+  }
+
+  vec3 viewVec = camera_->origin - hitPoint;
+  vec3 N = triangles_[triangleId].getNormal(viewVec);
+  vec3 reflectDir = N * 2 * viewVec.dot(N) - viewVec;
+
+  // diffuse
+  for (const std::unique_ptr<Light>& light : lights_) {
+    luminance += light->calculateLuminance(hitPoint, N, triangles_, triangleId);
+  }
+
+  // reflection
+  Ray reflectRay(hitPoint, reflectDir, triangles_[triangleId].material->ks);
+  for (int iter = 0; iter < 5 && reflectRay.ks > 0.01; ++iter) { // no more than 3 reflections
+    HitPoint reflectionHitPoint = getIntersection(reflectRay);
+    if (reflectionHitPoint.triangleId == -1) {
+      break;
+    }
+
+    N = triangles_[reflectionHitPoint.triangleId].getNormal(-reflectRay.direction);
+    for (const std::unique_ptr<Light>& light : lights_) {
+      luminance += light->calculateLuminance(reflectionHitPoint.point, N, triangles_, reflectionHitPoint.triangleId) * reflectRay.ks;
+    }
+
+    viewVec = -reflectDir;
+    reflectDir = N * 2 * viewVec.dot(N) - viewVec;
+    double ks = reflectRay.ks * triangles_[reflectionHitPoint.triangleId].material->ks;
+    reflectRay = Ray(reflectionHitPoint.point, reflectDir, ks);
+  }
+  return luminance;
 }
 
 

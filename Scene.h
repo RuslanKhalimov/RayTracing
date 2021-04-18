@@ -18,10 +18,10 @@ private:
   struct HitPoint {
     vec3 point;
     int triangleId;
-    bool isShadow;
   };
 
   HitPoint getIntersection(const Ray& ray);
+  SpectralValues getLuminance(const Ray& ray);
 
   void readGeometry(const std::string& fileName, const std::string& materialsFileName);
   std::vector<std::shared_ptr<Material>> readMaterials(const std::string& fileName);
