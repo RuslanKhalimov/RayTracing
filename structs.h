@@ -109,8 +109,8 @@ struct Ray {
 
   Ray() {}
 
-  Ray(const vec3& origin, const vec3& direction)
-    : origin(origin), direction(direction), ks(1), luminance(SpectralValues(0)) {}
+  Ray(const vec3& origin, const vec3& direction, double ks = 1)
+    : origin(origin), direction(direction), ks(ks), luminance(SpectralValues(0)) {}
 };
 
 struct Material {

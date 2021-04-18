@@ -105,9 +105,8 @@ void Scene::render(const std::string& outputFileName) {
         }
 
         // reflection
-        Ray reflectRay(hitPoint, reflectDir);
-        reflectRay.ks = triangles_[triangleId].material->ks;
-        for (int iter = 0; iter < 3 && reflectRay.ks > 0.1; ++iter) { // no more than 3 reflections
+        Ray reflectRay(hitPoint, reflectDir, triangles_[triangleId].material->ks);
+        for (int iter = 0; iter < 5 && reflectRay.ks > 0.01; ++iter) { // no more than 3 reflections
           HitPoint reflectionHitPoint = getIntersection(reflectRay);
           if (reflectionHitPoint.triangleId == -1) {
             break;
@@ -117,7 +116,11 @@ void Scene::render(const std::string& outputFileName) {
           for (const std::unique_ptr<Light>& light : lights_) {
             outLuminance[i][j] += light->calculateLuminance(reflectionHitPoint.point, N, triangles_, reflectionHitPoint.triangleId);
           }
-          reflectRay.ks *= triangles_[reflectionHitPoint.triangleId].material->ks;
+
+          viewVec = -reflectDir;
+          reflectDir = N * 2 * viewVec.dot(N) - viewVec;
+          double ks = reflectRay.ks * triangles_[reflectionHitPoint.triangleId].material->ks;
+          reflectRay = Ray(reflectionHitPoint.point, reflectDir, ks);
         }
       }
       outLuminance[i][j] = outLuminance[i][j] / scaledHitPoints[i][j].size();
