@@ -10,12 +10,6 @@ enum GeometryParseState {
   TRIANGLES
 };
 
-struct HitPoint {
-  vec3 point;
-  int triangleId;
-  bool isShadow;
-};
-
 void Scene::readSceneFromFiles(const std::string& geometryFile,
                                const std::string& materialsFile,
                                const std::string& lightsFile,
@@ -36,28 +30,20 @@ void Scene::render(const std::string& outputFileName) {
     for (int j = 0; j < width; ++j) {
       Ray ray = camera_->castRay(i, j);
 
-      double t = std::numeric_limits<double>::max();
-      int triangleId = -1;
-      for (int id = 0; id < triangles_.size(); ++id) {
-        if (triangles_[id].hitTest(ray, t)) {
-          triangleId = id;
-        }
-      }
+      HitPoint hitPoint = getIntersection(ray);
 
-      vec3 hitPoint = ray.origin + ray.direction * t;
-      bool isShadow = false;
-      if (triangleId != -1) {
-        isShadow = true;
-        vec3 N = triangles_[triangleId].getNormal(camera_->origin - hitPoint);
+      if (hitPoint.triangleId != -1) {
+        hitPoint.isShadow = true;
+        vec3 N = triangles_[hitPoint.triangleId].getNormal(camera_->origin - hitPoint.point);
         for (const auto& light : lights_) {
-          if (!light->calculateLuminance(hitPoint, N, triangles_, triangleId).isZero()) {
-            isShadow = false;
+          if (!light->calculateLuminance(hitPoint.point, N, triangles_, hitPoint.triangleId).isZero()) {
+            hitPoint.isShadow = false;
             break;
           }
         }
       }
 
-      hitPoints[i][j] = {hitPoint, triangleId, isShadow};
+      hitPoints[i][j] = hitPoint;
     }
   }
 
@@ -88,17 +74,8 @@ void Scene::render(const std::string& outputFileName) {
         for (int iOffset = 0; iOffset < ANTIALIASING_FACTOR; ++iOffset) {
           for (int jOffset = 0; jOffset < ANTIALIASING_FACTOR; ++jOffset) {
             Ray ray = camera_->castRay(i, j, ANTIALIASING_FACTOR, iOffset, jOffset);
-
-            double t = std::numeric_limits<double>::max();
-            int triangleId = -1;
-            for (int id = 0; id < triangles_.size(); ++id) { // TODO check only relevant triangles
-              if (triangles_[id].hitTest(ray, t)) {
-                triangleId = id;
-              }
-            }
-
             // `isShadow` is not used, so don't calculate it
-            scaledHitPoints[i][j].push_back({ray.origin + ray.direction * t, triangleId, false});
+            scaledHitPoints[i][j].push_back(getIntersection(ray));
           }
         }
       } else {
@@ -118,9 +95,29 @@ void Scene::render(const std::string& outputFileName) {
           continue;
         }
 
-        vec3 N = triangles_[triangleId].getNormal(camera_->origin - hitPoint);
+        vec3 viewVec = camera_->origin - hitPoint;
+        vec3 N = triangles_[triangleId].getNormal(viewVec);
+        vec3 reflectDir = N * 2 * viewVec.dot(N) - viewVec;
+
+        // diffuse
         for (const std::unique_ptr<Light>& light : lights_) {
           outLuminance[i][j] += light->calculateLuminance(hitPoint, N, triangles_, triangleId);
+        }
+
+        // reflection
+        Ray reflectRay(hitPoint, reflectDir);
+        reflectRay.ks = triangles_[triangleId].material->ks;
+        for (int iter = 0; iter < 3 && reflectRay.ks > 0.1; ++iter) { // no more than 3 reflections
+          HitPoint reflectionHitPoint = getIntersection(reflectRay);
+          if (reflectionHitPoint.triangleId == -1) {
+            break;
+          }
+
+          N = triangles_[reflectionHitPoint.triangleId].getNormal(-reflectRay.direction);
+          for (const std::unique_ptr<Light>& light : lights_) {
+            outLuminance[i][j] += light->calculateLuminance(reflectionHitPoint.point, N, triangles_, reflectionHitPoint.triangleId);
+          }
+          reflectRay.ks *= triangles_[reflectionHitPoint.triangleId].material->ks;
         }
       }
       outLuminance[i][j] = outLuminance[i][j] / scaledHitPoints[i][j].size();
@@ -144,10 +141,24 @@ void Scene::render(const std::string& outputFileName) {
 }
 
 
+Scene::HitPoint Scene::getIntersection(const Ray& ray) {
+  double t = std::numeric_limits<double>::max();
+  int triangleId = -1;
+  for (int id = 0; id < triangles_.size(); ++id) {
+    if (triangles_[id].hitTest(ray, t)) {
+      triangleId = id;
+    }
+  }
+  vec3 hitPoint = triangleId == -1 ? vec3(0, 0, 0) : ray.origin + ray.direction * t;
+
+  return {hitPoint, triangleId, false};
+}
+
+
 void Scene::readGeometry(const std::string& fileName, const std::string& materialsFileName) {
   std::ifstream in(fileName);
 
-  std::vector<SpectralValues> colors = readMaterials(materialsFileName);
+  std::vector<std::shared_ptr<Material>> materials = readMaterials(materialsFileName);
 
   std::string line;
   GeometryParseState state = GeometryParseState::INITIAL;
@@ -182,7 +193,7 @@ void Scene::readGeometry(const std::string& fileName, const std::string& materia
         std::istringstream iss(line);
         int v1, v2, v3;
         iss >> v1 >> v2 >> v3;
-        triangles_.push_back(Triangle(currentObjectId, vertices[v1], vertices[v2], vertices[v3], colors[currentObjectId]));
+        triangles_.push_back(Triangle(currentObjectId, vertices[v1], vertices[v2], vertices[v3], materials[currentObjectId]));
         break;
       }
     }
@@ -192,32 +203,37 @@ void Scene::readGeometry(const std::string& fileName, const std::string& materia
 }
 
 
-std::vector<SpectralValues> Scene::readMaterials(const std::string& fileName) {
+std::vector<std::shared_ptr<Material>> Scene::readMaterials(const std::string& fileName) {
   std::ifstream in(fileName);
 
-  std::vector<SpectralValues> colors;
+  std::vector<std::shared_ptr<Material>> materials;
   std::string line;
   int currentObjectId = -1;
-  std::unordered_map<int, double> kds;
+  double kd, ks;
+  std::unordered_map<int, double> color;
   while (getline(in, line)) {
     if (line.find("id") != std::string::npos) {
       if (currentObjectId != -1) {
-        colors.push_back(SpectralValues(kds));
-        kds.clear();
+        materials.push_back(std::make_shared<Material>(color, kd, ks));
+        color.clear();
       }
       ++currentObjectId;
+
+      getline(in, line);
+      std::istringstream iss(line);
+      iss >> kd >> ks;
       continue;
     }
     std::istringstream iss(line);
     int waveLength;
-    double kd;
-    iss >> waveLength >> kd;
-    kds[waveLength] = kd;
+    double col;
+    iss >> waveLength >> col;
+    color[waveLength] = col;
   }
 
   in.close();
 
-  return colors;
+  return materials;
 }
 
 

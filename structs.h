@@ -3,6 +3,7 @@
 #include <unordered_map>
 #include <cmath>
 #include <cassert>
+#include <memory>
 
 struct vec3 {
   double x, y, z;
@@ -10,6 +11,10 @@ struct vec3 {
   vec3() {}
 
   vec3(double x, double y, double z) : x(x), y(y), z(z) {}
+
+  vec3 operator-() const {
+    return vec3(-x, -y, -z);
+  }
 
   vec3 operator+(const vec3& v) const {
     return vec3(x + v.x, y + v.y, z + v.z);
@@ -99,22 +104,32 @@ struct SpectralValues {
 struct Ray {
   vec3 origin;
   vec3 direction;
-  SpectralValues kdeff;
+  double ks;
   SpectralValues luminance;
 
   Ray() {}
 
   Ray(const vec3& origin, const vec3& direction)
-    : origin(origin), direction(direction), kdeff(SpectralValues(1)), luminance(SpectralValues(0)) {}
+    : origin(origin), direction(direction), ks(1), luminance(SpectralValues(0)) {}
+};
+
+struct Material {
+  SpectralValues color;
+  double kd;
+  double ks;
+
+  Material(const SpectralValues& color, double kd, double ks) : color(color), kd(kd), ks(ks) {
+    assert(kd + ks - 1 < 1e-8);
+  }
 };
 
 struct Triangle {
   int objectId;
   vec3 v1, v2, v3;
-  SpectralValues color;
+  std::shared_ptr<Material> material;
 
-  Triangle(int objectId, const vec3& v1, const vec3& v2, const vec3& v3, const SpectralValues& color)
-      : objectId(objectId), v1(v1), v2(v2), v3(v3), color(color) {}
+  Triangle(int objectId, const vec3& v1, const vec3& v2, const vec3& v3, const std::shared_ptr<Material>& material)
+      : objectId(objectId), v1(v1), v2(v2), v3(v3), material(material) {}
 
   bool hitTest(const Ray& ray, double& t) const {
     vec3 e1 = v2 - v1;

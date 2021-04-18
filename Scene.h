@@ -15,8 +15,16 @@ public:
   void render(const std::string& outputFileName);
 
 private:
+  struct HitPoint {
+    vec3 point;
+    int triangleId;
+    bool isShadow;
+  };
+
+  HitPoint getIntersection(const Ray& ray);
+
   void readGeometry(const std::string& fileName, const std::string& materialsFileName);
-  std::vector<SpectralValues> readMaterials(const std::string& fileName);
+  std::vector<std::shared_ptr<Material>> readMaterials(const std::string& fileName);
   void readLights(const std::string& fileName);
   void readCamera(const std::string& fileName);
 

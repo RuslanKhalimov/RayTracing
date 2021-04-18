@@ -30,7 +30,8 @@ SpectralValues Light::luminanceFromPoint(const vec3& lightPoint,
   }
 
   double E = (intensity_ / (dist * dist)) * cosTheta;
-  return triangles[hitTriangleId].color * kd_ * E / M_PI;
+  auto material = triangles[hitTriangleId].material;
+  return material->color * material->kd * kd_ * E / M_PI;
 }
 
 
