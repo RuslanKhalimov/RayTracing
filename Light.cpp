@@ -6,7 +6,6 @@ Light::Light(const vec3& origin, double intensity, const SpectralValues& kd)
 
 
 SpectralValues Light::luminanceFromPoint(const vec3& lightPoint,
-                                         int intensityScaler,
                                          const vec3& hitPoint,
                                          const vec3& N,
                                          const std::vector<Triangle>& triangles,
@@ -30,7 +29,7 @@ SpectralValues Light::luminanceFromPoint(const vec3& lightPoint,
     }
   }
 
-  double E = (intensity_ / intensityScaler / (dist * dist)) * cosTheta;
+  double E = (intensity_ / (dist * dist)) * cosTheta;
   return triangles[hitTriangleId].color * kd_ * E / M_PI;
 }
 
@@ -43,7 +42,7 @@ SpectralValues PointLight::calculateLuminance(const vec3& hitPoint,
                                               const vec3& N,
                                               const std::vector<Triangle>& triangles,
                                               int hitTriangleId) const {
-  return luminanceFromPoint(origin_, 1, hitPoint, N, triangles, hitTriangleId);
+  return luminanceFromPoint(origin_, hitPoint, N, triangles, hitTriangleId);
 }
 
 
@@ -61,7 +60,7 @@ SpectralValues RectangleLight::calculateLuminance(const vec3& hitPoint,
       double x = origin_.x - xSize_ / 2 + (i + 1) * xSize_ / (SUBDIVISION + 1);
       double y = origin_.y - ySize_ / 2 + (j + 1) * ySize_ / (SUBDIVISION + 1);
       vec3 lightPoint(x, y, origin_.z);
-      resultLuminance += luminanceFromPoint(lightPoint, SUBDIVISION * SUBDIVISION, hitPoint, N, triangles, hitTriangleId);
+      resultLuminance += luminanceFromPoint(lightPoint, hitPoint, N, triangles, hitTriangleId) / (SUBDIVISION * SUBDIVISION);
     }
   }
   return resultLuminance;

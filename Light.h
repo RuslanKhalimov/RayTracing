@@ -18,7 +18,6 @@ protected:
   const SpectralValues kd_;
 
   SpectralValues luminanceFromPoint(const vec3& lightPoint,
-                                    int intensityScaler,
                                     const vec3& hitPoint,
                                     const vec3& N,
                                     const std::vector<Triangle>& triangles,
