@@ -178,7 +178,7 @@ struct Camera {
   const vec3 origin;
   const vec3 direction;
   const int width, height;
-  const double viewAngle = M_PI / 3;
+  const double viewAngle = M_PI / 2;
 
   Camera(const vec3& origin, const vec3& target, int width, int height)
       : origin(origin), width(width), height(height), direction((target - origin).normalize()) {}
@@ -192,9 +192,10 @@ struct Camera {
     int iScaled = (i - 1) * resolutionScaler + iOffset;
     int jScaled = (j - 1) * resolutionScaler + jOffset;
 
-    double x = -(2 * (jScaled + 0.5) / (double)scaledWidth - 1) * tan(viewAngle / 2.) * scaledWidth / (double)scaledHeight;
-    double z = -(2 * (iScaled + 0.5) / (double)scaledHeight - 1) * tan(viewAngle / 2.);
-    vec3 dir = vec3(x, -1, z).normalize();
+    double x = jScaled + 0.5 - scaledWidth / 2;
+    double y = scaledWidth / tan(viewAngle / 2);
+    double z = iScaled + 0.5 - scaledHeight / 2;
+    vec3 dir = -vec3(x, y, z).normalize();
 
     return Ray(origin, dir);
   }

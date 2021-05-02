@@ -1,4 +1,4 @@
-input_file_name = 'cmake-build-debug/output.txt'
+input_file_name = 'cmake-build-release/output.txt'
 output_file_name = 'converted.radiance'
 
 def process_table(text_file, out):

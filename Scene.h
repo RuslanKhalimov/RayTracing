@@ -28,7 +28,7 @@ private:
   void readLights(const std::string& fileName);
   void readCamera(const std::string& fileName);
 
-  static const int ANTIALIASING_FACTOR = 5;
+  static const int ANTIALIASING_FACTOR = 4;
 
   std::vector<Triangle> triangles_;
   std::vector<std::unique_ptr<Light>> lights_;
